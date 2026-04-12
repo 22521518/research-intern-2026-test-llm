@@ -267,6 +267,7 @@ def main(root_dir: str | Path | None = None):
                                 predicted = processed_answer.get("vulnerabilities", [])
                                 if isinstance(predicted, list):
                                     pred_output["predicted_vulnerabilities"].extend(predicted)
+                                    print(f"Predicted vulnerabilities for prompt #{prompt_idx}: {predicted}")
 
                 except Exception as e:
                     pred_output["error"] = str(e)
