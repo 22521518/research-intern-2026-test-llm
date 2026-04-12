@@ -15,7 +15,7 @@ if str(project_root) not in sys.path:
 from prompt import PROMPT
 from libs.libfile import get_content, read_json, write_json, write_to_file
 from libs.google_ai_request_queue import GoogleAIRequestQueue
-from preprocess.smc_preprocess import OUTPUT_ANNOTATION_FILE as SMC_ANNOTATION_FILE, get_vulnerability_categories as get_smartbugs_vulnerability_categories
+from preprocess.smc_preprocess import OUTPUT_ANNOTATION_FILE as SMC_ANNOTATION_FILE
 
 # If you use a .env file, python-dotenv will load it here. If python-dotenv
 # isn't installed that's fine - os.environ will still be used.
@@ -27,27 +27,64 @@ except Exception:
 
 OUTPUT_LOG_DIR = project_root / "log"
 
-def get_smartbugs_curated_vulnerabilities() -> list[dict]:
+def get_smartbugs_curated_vulnerabilities(runtime_root: Path | None = None) -> list[dict]:
   # annotations file is JSON; read and parse it
-  return read_json(SMC_ANNOTATION_FILE)
+  if runtime_root is not None:
+    runtime_annotation = runtime_root / "data" / SMC_ANNOTATION_FILE.name
+    if runtime_annotation.exists():
+      return read_json(str(runtime_annotation))
+  return read_json(str(SMC_ANNOTATION_FILE))
 
-def smartbugs_prompt() -> dict:
+
+def resolve_runtime_path(path_value: str, runtime_root: Path) -> Path:
+  normalized = str(path_value).strip().replace("\\", "/")
+  if not normalized:
+    raise ValueError("path_value must not be empty")
+
+  # Keep a few candidates so this works across Windows/Linux and Jupyter cwd changes.
+  candidates: list[Path] = []
+  as_path = Path(normalized)
+  if as_path.is_absolute():
+    candidates.append(as_path)
+  else:
+    candidates.append((runtime_root / as_path).resolve())
+    candidates.append((project_root / as_path).resolve())
+    candidates.append((Path.cwd() / as_path).resolve())
+
+  for candidate in candidates:
+    if candidate.exists():
+      return candidate
+
+  return candidates[0]
+
+def smartbugs_prompt(runtime_root: Path | None = None) -> dict:
+  effective_root = runtime_root or project_root
   dataset_name = "smartbugs-curated"
-  outlogs = OUTPUT_LOG_DIR / dataset_name / get_timestamp()
-  vulnerabilities = get_smartbugs_curated_vulnerabilities()
+  outlogs = effective_root / "log" / dataset_name / get_timestamp()
+  vulnerabilities = get_smartbugs_curated_vulnerabilities(effective_root)
+  vulnerability_categories = get_vulnerability_categories_from_annotations(vulnerabilities)
+  if not vulnerability_categories:
+    raise ValueError("No vulnerability categories found in annotation file")
+
   prompts = []
   for vulnerability in vulnerabilities:
+    resolved_processed_path = resolve_runtime_path(vulnerability["processed_file_path"], effective_root)
+    if not resolved_processed_path.exists():
+      raise FileNotFoundError(
+        f"Missing processed file: {vulnerability['processed_file_path']} -> {resolved_processed_path}"
+      )
+
     log_file = Path(outlogs) / f"{datetime.now().strftime('%H%M%S')}_{vulnerability.get('org_file_path').replace('/', '-')}.json"
     prompt_text = PROMPT.format(
-        CONTRACT_CODE=get_content(vulnerability["processed_file_path"]),
-        VULNERABILITY_LIST=parse_set_to_string(get_smartbugs_vulnerability_categories())
+        CONTRACT_CODE=get_content(str(resolved_processed_path)),
+      VULNERABILITY_LIST=parse_set_to_string(vulnerability_categories)
     )
     prompts.append({
         "dataset_name": dataset_name,
         "vulnerabilities": vulnerability.get("vulnerabilities", []),
         "content": prompt_text,
         "org_file_path": vulnerability.get("org_file_path"),
-        "processed_file_path": vulnerability.get("processed_file_path"),
+        "processed_file_path": str(resolved_processed_path),
         "log_file": log_file,
     })
   return {"prompts": prompts, "outlogs": outlogs}
@@ -55,6 +92,16 @@ def smartbugs_prompt() -> dict:
 
 def parse_set_to_string(s: set[str]) -> str:
     return ', '.join(sorted(s))
+
+
+def get_vulnerability_categories_from_annotations(annotations: list[dict]) -> set[str]:
+  categories: set[str] = set()
+  for item in annotations:
+    for vulnerability in item.get("vulnerabilities", []):
+      category = vulnerability.get("category")
+      if category:
+        categories.add(str(category))
+  return categories
 
 def get_timestamp() -> str:
     """Tạo chuỗi thời gian để đặt tên file."""
@@ -110,7 +157,9 @@ def build_log_file(outlogs: Path, prompt_idx: int, org_file_path: str | None) ->
     safe_name = f"prompt-{prompt_idx}"
   return Path(outlogs) / f"{datetime.now().strftime('%H%M%S_%f')}_{prompt_idx:05d}_{safe_name}.json"
 
-def main():
+def main(root_dir: str | Path | None = None):
+  runtime_root = Path(root_dir).expanduser().resolve() if root_dir else project_root
+
   api_key = os.getenv('GOOGLE_API_KEY')
   if not api_key:
     raise RuntimeError("GOOGLE_API_KEY is not set")
@@ -122,10 +171,11 @@ def main():
     f"Queue config: REQUESTS_PER_MINUTE={requests_per_minute}, "
     f"MAX_IN_FLIGHT_REQUESTS={max_in_flight_requests}"
   )
+  print(f"Runtime root: {runtime_root}")
 
   for gemma_model in ["gemma-4-26b-a4b-it","gemma-4-31b-it"]:
     print(f"=== STARTING EVALUATION WITH MODEL {gemma_model} ===")
-    data = smartbugs_prompt()
+    data = smartbugs_prompt(runtime_root=runtime_root)
     total_prompts = len(data["prompts"])
     print(f"Total prompts to process: {total_prompts}\\n")
 
