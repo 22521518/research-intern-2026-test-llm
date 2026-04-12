@@ -174,7 +174,7 @@ def main(root_dir: str | Path | None = None):
     )
     print(f"Runtime root: {runtime_root}")
 
-    for gemma_model in ["gemma-4-26b-a4b-it", "gemma-4-31b-it"]:
+    for gemma_model in ["gemma-4-31b-it"]:
         print(f"=== STARTING EVALUATION WITH MODEL {gemma_model} ===")
         data = smartbugs_prompt(runtime_root=runtime_root)
         outlogs = Path(data["outlogs"])
@@ -267,7 +267,6 @@ def main(root_dir: str | Path | None = None):
                                 predicted = processed_answer.get("vulnerabilities", [])
                                 if isinstance(predicted, list):
                                     pred_output["predicted_vulnerabilities"].extend(predicted)
-                                    print(f"Predicted vulnerabilities for prompt #{prompt_idx}: {predicted}")
 
                 except Exception as e:
                     pred_output["error"] = str(e)
@@ -283,6 +282,7 @@ def main(root_dir: str | Path | None = None):
                     try:
                         result_file = log_file.with_name(log_file.stem + "_result.json")
                         pred_output["log_file"] = str(result_file)
+                        print(f"Writing result for prompt #{prompt_idx} to {result_file}:\n{json.dumps(pred_output, indent=2)}\n")
                         write_json(result_file, pred_output)
 
                         with results_lock:
