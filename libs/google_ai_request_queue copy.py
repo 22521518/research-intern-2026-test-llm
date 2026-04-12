@@ -23,6 +23,34 @@ import time
 T = TypeVar("T")
 
 
+class AtomicCounter:
+    """A minimal lock-based atomic counter."""
+
+    def __init__(self, initial: int = 0) -> None:
+        self._value = int(initial)
+        self._lock = threading.Lock()
+
+    def get(self) -> int:
+        with self._lock:
+            return self._value
+
+    def increment(self, amount: int = 1) -> int:
+        if amount < 0:
+            raise ValueError("amount must be >= 0")
+        with self._lock:
+            self._value += amount
+            return self._value
+
+    def decrement(self, amount: int = 1) -> int:
+        if amount < 0:
+            raise ValueError("amount must be >= 0")
+        with self._lock:
+            if self._value < amount:
+                raise ValueError("counter cannot go below zero")
+            self._value -= amount
+            return self._value
+
+
 @dataclass(frozen=True)
 class DispatchQueueStats:
     pending: int
@@ -39,18 +67,6 @@ class GoogleAIRequestQueue(Generic[T]):
     - ``put(item)``: enqueue a new request payload.
     - ``take_ready()``: block until an item is allowed to be sent, then pop it.
     - ``mark_done()``: call when a response is received to free one in-flight slot.
-
-    FIX NOTES vs original:
-    - Removed AtomicCounter entirely: its internal lock caused nested-lock
-      deadlocks when called while holding the Condition lock (_cv). All
-      in-flight accounting is now done as a plain int guarded by _cv.
-    - _trim_rate_window: changed ``<=`` to ``<`` so a timestamp exactly at the
-      cutoff boundary is NOT evicted prematurely (off-by-one in RPM window).
-    - take_ready: ``now`` is refreshed inside the loop *after* each wait() so
-      the deadline check and rate-slot calculation use a current timestamp,
-      not a stale one captured before sleeping.
-    - mark_done: validation now raises ValueError before mutating state, and
-      notify_all() is always called so waiting workers are unblocked.
     """
 
     WINDOW_SECONDS = 60.0
@@ -66,17 +82,11 @@ class GoogleAIRequestQueue(Generic[T]):
 
         self._pending: Deque[T] = deque()
         self._sent_timestamps: Deque[float] = deque()
-
-        # FIX 1: plain int guarded by _cv — no separate lock → no nested-lock deadlock
-        self._in_flight: int = 0
+        self._in_flight = AtomicCounter(0)
 
         self._lock = threading.Lock()
         self._cv = threading.Condition(self._lock)
         self._closed = False
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def put(self, item: T) -> None:
         with self._cv:
@@ -93,10 +103,11 @@ class GoogleAIRequestQueue(Generic[T]):
     def take_ready(self, timeout: Optional[float] = None) -> Optional[T]:
         """Return next dispatchable item or None on timeout/closed-empty queue.
 
-        Pops an item only when BOTH conditions hold:
+        This method only pops an item when both conditions are true:
         - in_flight < max_in_flight
         - sent_in_last_60s < requests_per_minute
         """
+
         if timeout is not None and timeout < 0:
             raise ValueError("timeout must be >= 0")
 
@@ -104,34 +115,30 @@ class GoogleAIRequestQueue(Generic[T]):
 
         with self._cv:
             while True:
-                # FIX 2: refresh `now` on every iteration so deadline and
-                # rate-slot math are never based on a stale timestamp.
                 now = time.monotonic()
                 self._trim_rate_window(now)
 
                 has_pending = bool(self._pending)
-                has_in_flight_slot = self._in_flight < self.max_in_flight
+                in_flight = self._in_flight.get()
+                has_in_flight_slot = in_flight < self.max_in_flight
                 has_rate_slot = len(self._sent_timestamps) < self.requests_per_minute
 
                 if has_pending and has_in_flight_slot and has_rate_slot:
                     item = self._pending.popleft()
-                    self._in_flight += 1
+                    self._in_flight.increment()
                     self._sent_timestamps.append(now)
                     return item
 
                 if self._closed and not self._pending:
                     return None
 
-                # How long can we afford to wait?
-                remaining: Optional[float] = None
+                remaining = None
                 if deadline is not None:
                     remaining = deadline - now
                     if remaining <= 0:
                         return None
 
-                # If only the rate limit is blocking us, sleep just long
-                # enough for the oldest timestamp to age out of the window.
-                rate_wait: Optional[float] = None
+                rate_wait = None
                 if has_pending and has_in_flight_slot and not has_rate_slot:
                     rate_wait = self._seconds_until_rate_slot(now)
 
@@ -140,35 +147,29 @@ class GoogleAIRequestQueue(Generic[T]):
 
     def mark_done(self, done_count: int = 1) -> int:
         """Decrease in-flight count when response(s) are completed."""
+
         if done_count < 1:
             raise ValueError("done_count must be >= 1")
 
         with self._cv:
-            # FIX 3: validate *before* mutating so state stays consistent on error
-            if self._in_flight < done_count:
-                raise ValueError(
-                    f"done_count ({done_count}) exceeds current in-flight "
-                    f"count ({self._in_flight})"
-                )
-            self._in_flight -= done_count
+            current = self._in_flight.get()
+            if current < done_count:
+                raise ValueError("done_count is larger than in-flight count")
+            new_value = self._in_flight.decrement(done_count)
             self._cv.notify_all()
-            return self._in_flight
+            return new_value
 
     def stats(self) -> DispatchQueueStats:
         with self._cv:
             self._trim_rate_window(time.monotonic())
             return DispatchQueueStats(
                 pending=len(self._pending),
-                in_flight=self._in_flight,
+                in_flight=self._in_flight.get(),
                 max_in_flight=self.max_in_flight,
                 requests_per_minute=self.requests_per_minute,
                 sent_in_current_window=len(self._sent_timestamps),
                 closed=self._closed,
             )
-
-    # ------------------------------------------------------------------
-    # Internal helpers (must be called with _cv held)
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _min_wait(a: Optional[float], b: Optional[float]) -> Optional[float]:
@@ -186,10 +187,8 @@ class GoogleAIRequestQueue(Generic[T]):
 
     def _trim_rate_window(self, now: float) -> None:
         cutoff = now - self.WINDOW_SECONDS
-        # FIX 4: strict ``<`` instead of ``<=`` — a timestamp exactly at the
-        # boundary is still within the 60-second window and must not be evicted.
-        while self._sent_timestamps and self._sent_timestamps[0] < cutoff:
+        while self._sent_timestamps and self._sent_timestamps[0] <= cutoff:
             self._sent_timestamps.popleft()
 
 
-__all__ = ["DispatchQueueStats", "GoogleAIRequestQueue"]
+__all__ = ["AtomicCounter", "DispatchQueueStats", "GoogleAIRequestQueue"]
