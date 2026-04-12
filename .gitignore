@@ -1,0 +1,56 @@
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.python-version
+.venv/
+venv/
+.venv_gg_genai/
+
+# Environment files
+.env
+.env.*
+
+# Virtualenv / pip
+pip-wheel-metadata/
+*.egg-info/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs and results
+log/
+logs/
+*.log
+*.result.json
+*_result.json
+
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Build / dist
+dist/
+build/
+*.egg
+.venv*/
