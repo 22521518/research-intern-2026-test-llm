@@ -6,7 +6,6 @@ import json
 from google import genai
 from google.genai import types
 import re
-import time
 import threading
 
 project_root = Path(__file__).resolve().parent
@@ -15,6 +14,7 @@ if str(project_root) not in sys.path:
 
 from prompt import PROMPT
 from libs.libfile import get_content, read_json, write_json, write_to_file
+from libs.google_ai_request_queue import GoogleAIRequestQueue
 from preprocess.smc_preprocess import OUTPUT_ANNOTATION_FILE as SMC_ANNOTATION_FILE, get_vulnerability_categories as get_smartbugs_vulnerability_categories
 
 # If you use a .env file, python-dotenv will load it here. If python-dotenv
@@ -94,102 +94,151 @@ def parse_json_answer(json_str: str) -> dict:
 
     return {"error": "no_json_object_found"}
 
-class RateLimiter:
-    """Simple mutex-based rate limiter in Requests Per Minute (RPM).
-
-    Usage: create RateLimiter(rpm) and call `wait()` before each request.
-    """
-    def __init__(self, rpm: int = 60):
-        self.rpm = max(1, int(rpm))
-        self.min_interval = 60.0 / self.rpm
-        self.lock = threading.Lock()
-        self.last = 0.0
-
-    def wait(self) -> None:
-        with self.lock:
-            now = time.monotonic()
-            elapsed = now - self.last
-            to_wait = self.min_interval - elapsed
-            if to_wait > 0:
-                time.sleep(to_wait)
-                now = time.monotonic()
-            self.last = now
-
-if __name__ == "__main__":
-  client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
-
-  # Rate limit configuration (requests per minute). Set via env var REQUESTS_PER_MINUTE.
+def get_env_int(name: str, default: int, minimum: int = 1) -> int:
+  raw = os.getenv(name, str(default))
   try:
-    REQUESTS_PER_MINUTE = int(os.getenv('REQUESTS_PER_MINUTE', '12'))
+    value = int(raw)
   except Exception:
-    REQUESTS_PER_MINUTE = 12
+    value = default
+  return max(minimum, value)
 
-  rate_limiter = RateLimiter(REQUESTS_PER_MINUTE)
+
+def build_log_file(outlogs: Path, prompt_idx: int, org_file_path: str | None) -> Path:
+  safe_name = (org_file_path or f"prompt-{prompt_idx}").replace("/", "-").replace("\\", "-")
+  safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "-", safe_name).strip("-")
+  if not safe_name:
+    safe_name = f"prompt-{prompt_idx}"
+  return Path(outlogs) / f"{datetime.now().strftime('%H%M%S_%f')}_{prompt_idx:05d}_{safe_name}.json"
+
+def main():
+  api_key = os.getenv('GOOGLE_API_KEY')
+  if not api_key:
+    raise RuntimeError("GOOGLE_API_KEY is not set")
+
+  requests_per_minute = get_env_int('REQUESTS_PER_MINUTE', 12, 1)
+  max_in_flight_requests = get_env_int('MAX_IN_FLIGHT_REQUESTS', 4, 1)
+
+  print(
+    f"Queue config: REQUESTS_PER_MINUTE={requests_per_minute}, "
+    f"MAX_IN_FLIGHT_REQUESTS={max_in_flight_requests}"
+  )
+
   for gemma_model in ["gemma-4-26b-a4b-it","gemma-4-31b-it"]:
     print(f"=== STARTING EVALUATION WITH MODEL {gemma_model} ===")
     data = smartbugs_prompt()
-    summarized_results = []
-    print(f"Total prompts to process: {len(data['prompts'])}\n")
-    for idx, current_prompt in enumerate(data["prompts"]):
-      prompt_text = current_prompt["content"] if isinstance(current_prompt, dict) else current_prompt
-      log_file = Path(data["outlogs"]) / f"{datetime.now().strftime('%H%M%S')}_{current_prompt.get('org_file_path').replace('/', '-') if isinstance(current_prompt, dict) else 'prompt'}.json"
+    total_prompts = len(data["prompts"])
+    print(f"Total prompts to process: {total_prompts}\\n")
 
-      config = types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(include_thoughts=True),
-            temperature=0,
-        )
-      
-      # Ensure we respect RPM limits before making the API call
-      rate_limiter.wait()
+    request_queue: GoogleAIRequestQueue[tuple[int, dict]] = GoogleAIRequestQueue(
+      max_in_flight=max_in_flight_requests,
+      requests_per_minute=requests_per_minute,
+    )
 
-      response = client.models.generate_content(
-        model= gemma_model, #"gemma-4-31b-it", #"gemini-2.5-flash",
-        contents=prompt_text,
-        config=types.GenerateContentConfig(
-        thinking_config=types.ThinkingConfig(
-          include_thoughts=True,
-        ),
-        temperature=0,
-      ))
-      # 3. Lưu log JSON
-      write_json(log_file, response.model_dump())
+    for idx, current_prompt in enumerate(data["prompts"], start=1):
+      if isinstance(current_prompt, dict):
+        request_queue.put((idx, current_prompt))
+      else:
+        request_queue.put((idx, {"content": str(current_prompt)}))
+    request_queue.close()
 
-      
-      pred_output = {
-        "dataset_name": current_prompt.get("dataset_name", "unknown"),
-        "org_file_path": current_prompt.get("org_file_path"),
-        "processed_file_path": current_prompt.get("processed_file_path"),
-        "vulnerabilities": current_prompt.get("vulnerabilities", []),
-        "predicted_vulnerabilities": [],
-        "reasoning": [],
-        "log_file": "",
-      }
-      
-      for part in response.candidates[0].content.parts:
-        if not part.text:
+    result_by_index: dict[int, str] = {}
+    results_lock = threading.Lock()
+    progress_lock = threading.Lock()
+    progress = {"done": 0}
+
+    worker_count = max_in_flight_requests
+
+    def worker(worker_id: int) -> None:
+      worker_client = genai.Client(api_key=api_key)
+      while True:
+        task = request_queue.take_ready(timeout=1.0)
+        if task is None:
+          stats = request_queue.stats()
+          if stats.closed and stats.pending == 0:
+            break
           continue
-        if part.thought:
-          print(f"--- INTERNAL REASONING ---")
-          print("Thought summary:\n")
-          print("\n")
-          print()
-          pred_output["reasoning"].append(part.text)
 
-        else:
-          print(f"--- OUTPUT ---")
-          print("Answer\n")
-          print("\n")
-          print()
-          processed_answer = parse_json_answer(part.text)
-          pred_output["predicted_vulnerabilities"].extend(processed_answer.get("vulnerabilities", []))
+        prompt_idx, current_prompt = task
+        log_file = build_log_file(
+          outlogs=Path(data["outlogs"]),
+          prompt_idx=prompt_idx,
+          org_file_path=current_prompt.get("org_file_path"),
+        )
 
-      # Lưu kết quả dự đoán ra file JSON
-      result_file = log_file.with_name(log_file.stem + "_result.json")
-      pred_output["log_file"] = str(result_file)
-      write_json(result_file, pred_output)
-      print(f"Saved prediction result to {result_file}\n")
-      print(f"--- END OF PROMPT {idx + 1}/{len(data['prompts'])} ---\n\n")
+        pred_output = {
+          "dataset_name": current_prompt.get("dataset_name", "unknown"),
+          "org_file_path": current_prompt.get("org_file_path"),
+          "processed_file_path": current_prompt.get("processed_file_path"),
+          "vulnerabilities": current_prompt.get("vulnerabilities", []),
+          "predicted_vulnerabilities": [],
+          "reasoning": [],
+          "log_file": "",
+          "error": None,
+        }
 
-      summarized_results.append(str(result_file))
+        try:
+          response = worker_client.models.generate_content(
+            model=gemma_model,
+            contents=current_prompt["content"],
+            config=types.GenerateContentConfig(
+              thinking_config=types.ThinkingConfig(
+                include_thoughts=True,
+              ),
+              temperature=0,
+            ),
+          )
+
+          write_json(log_file, response.model_dump())
+
+          if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+              part_text = getattr(part, "text", None)
+              if not part_text:
+                continue
+
+              if getattr(part, "thought", False):
+                pred_output["reasoning"].append(part_text)
+              else:
+                processed_answer = parse_json_answer(part_text)
+                predicted = processed_answer.get("vulnerabilities", [])
+                if isinstance(predicted, list):
+                  pred_output["predicted_vulnerabilities"].extend(predicted)
+
+        except Exception as e:
+          pred_output["error"] = str(e)
+
+        finally:
+          try:
+            result_file = log_file.with_name(log_file.stem + "_result.json")
+            pred_output["log_file"] = str(result_file)
+            write_json(result_file, pred_output)
+
+            with results_lock:
+              result_by_index[prompt_idx] = str(result_file)
+          except Exception as result_write_error:
+            print(f"Failed to write result for prompt #{prompt_idx}: {result_write_error}")
+          finally:
+            in_flight_now = request_queue.mark_done()
+            with progress_lock:
+              progress["done"] += 1
+              done_now = progress["done"]
+            print(
+              f"[{gemma_model}] worker-{worker_id} finished "
+              f"{done_now}/{total_prompts} | in_flight={in_flight_now}"
+            )
+
+    workers = []
+    for worker_id in range(1, worker_count + 1):
+      thread = threading.Thread(target=worker, args=(worker_id,), daemon=True)
+      workers.append(thread)
+      thread.start()
+
+    for thread in workers:
+      thread.join()
+
+    summarized_results = [result_by_index[i] for i in sorted(result_by_index)]
     write_json(Path(data["outlogs"]) / "summary" / f"{datetime.now().strftime('%H%M%S')}.json", summarized_results)
     print(f"=== FINISHED EVALUATION WITH MODEL {gemma_model} ===\n\n")
+
+if __name__ == "__main__":
+  main()
