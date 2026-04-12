@@ -7,7 +7,6 @@ from google import genai
 from google.genai import types
 import re
 import threading
-import time
 
 project_root = Path(__file__).resolve().parent
 if str(project_root) not in sys.path:
@@ -26,44 +25,6 @@ except Exception:
 
 OUTPUT_LOG_DIR = project_root / "log"
 
-# ---------------------------------------------------------------------------
-# Retry config
-# ---------------------------------------------------------------------------
-RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
-MAX_RETRIES     = 5
-RETRY_BASE_SECS = 2.0
-RETRY_MAX_SECS  = 60.0
-
-
-def _is_retryable(exc: Exception) -> bool:
-    msg = str(exc)
-    return any(str(code) in msg for code in RETRYABLE_STATUS_CODES)
-
-
-def call_with_retry(fn, *args, **kwargs):
-    """Gọi fn(), retry với exponential backoff nếu gặp lỗi retryable.
-
-    Delays: 2s → 4s → 8s → 16s → 32s (capped 60s).
-    Raise exception gốc nếu hết retry.
-    """
-    last_exc: Exception | None = None
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as exc:
-            last_exc = exc
-            if attempt < MAX_RETRIES and _is_retryable(exc):
-                wait = min(RETRY_BASE_SECS * (2 ** attempt), RETRY_MAX_SECS)
-                print(f"[retry] attempt {attempt + 1}/{MAX_RETRIES} ({exc}), waiting {wait:.1f}s...")
-                time.sleep(wait)
-            else:
-                raise
-    raise last_exc
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def get_smartbugs_curated_vulnerabilities(runtime_root: Path | None = None) -> list[dict]:
     if runtime_root is not None:
@@ -77,6 +38,7 @@ def resolve_runtime_path(path_value: str, runtime_root: Path) -> Path:
     normalized = str(path_value).strip().replace("\\", "/")
     if not normalized:
         raise ValueError("path_value must not be empty")
+
     candidates: list[Path] = []
     as_path = Path(normalized)
     if as_path.is_absolute():
@@ -85,9 +47,11 @@ def resolve_runtime_path(path_value: str, runtime_root: Path) -> Path:
         candidates.append((runtime_root / as_path).resolve())
         candidates.append((project_root / as_path).resolve())
         candidates.append((Path.cwd() / as_path).resolve())
+
     for candidate in candidates:
         if candidate.exists():
             return candidate
+
     return candidates[0]
 
 
@@ -110,6 +74,7 @@ def smartbugs_prompt(runtime_root: Path | None = None) -> dict:
                 f"Missing processed file: {vulnerability['processed_file_path']} "
                 f"-> {resolved_processed_path}"
             )
+
         prompt_text = PROMPT.format(
             CONTRACT_CODE=get_content(str(resolved_processed_path)),
             VULNERABILITY_LIST=parse_set_to_string(vulnerability_categories),
@@ -145,16 +110,19 @@ def get_timestamp() -> str:
 def parse_json_answer(json_str: str) -> dict:
     if not json_str:
         return {"error": "empty_response"}
+
     try:
         return json.loads(json_str)
     except json.JSONDecodeError:
         pass
+
     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", json_str)
     if fenced:
         try:
             return json.loads(fenced.group(1))
         except json.JSONDecodeError:
             pass
+
     start = json_str.find("{")
     end = json_str.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -162,7 +130,12 @@ def parse_json_answer(json_str: str) -> dict:
         try:
             return json.loads(candidate)
         except json.JSONDecodeError as e:
-            return {"error": "invalid_json_after_extraction", "details": str(e), "candidate": candidate}
+            return {
+                "error": "invalid_json_after_extraction",
+                "details": str(e),
+                "candidate": candidate,
+            }
+
     return {"error": "no_json_object_found"}
 
 
@@ -176,16 +149,14 @@ def get_env_int(name: str, default: int, minimum: int = 1) -> int:
 
 
 def build_log_file(outlogs: Path, prompt_idx: int, org_file_path: str | None) -> Path:
+    # FIX (nhỏ 1): dùng %f để có microseconds, tránh trùng tên khi nhiều worker
+    # chạy song song và gọi hàm này trong cùng millisecond.
     safe_name = (org_file_path or f"prompt-{prompt_idx}").replace("/", "-").replace("\\", "-")
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "-", safe_name).strip("-")
     if not safe_name:
         safe_name = f"prompt-{prompt_idx}"
     return Path(outlogs) / f"{datetime.now().strftime('%H%M%S_%f')}_{prompt_idx:05d}_{safe_name}.json"
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main(root_dir: str | Path | None = None):
     runtime_root = Path(root_dir).expanduser().resolve() if root_dir else project_root
@@ -194,7 +165,7 @@ def main(root_dir: str | Path | None = None):
     if not api_key:
         raise RuntimeError("GOOGLE_API_KEY is not set")
 
-    requests_per_minute    = get_env_int("REQUESTS_PER_MINUTE", 12, 1)
+    requests_per_minute = get_env_int("REQUESTS_PER_MINUTE", 12, 1)
     max_in_flight_requests = get_env_int("MAX_IN_FLIGHT_REQUESTS", 4, 1)
 
     print(
@@ -203,13 +174,15 @@ def main(root_dir: str | Path | None = None):
     )
     print(f"Runtime root: {runtime_root}")
 
-    for gemma_model in ["gemma-4-26b-a4b-it", "gemma-4-31b-it"]:
+    for gemma_model in ["gemma-4-31b-it"]:
         print(f"=== STARTING EVALUATION WITH MODEL {gemma_model} ===")
-        data          = smartbugs_prompt(runtime_root=runtime_root)
-        outlogs       = Path(data["outlogs"])
+        data = smartbugs_prompt(runtime_root=runtime_root)
+        outlogs = Path(data["outlogs"])
         total_prompts = len(data["prompts"])
         print(f"Total prompts to process: {total_prompts}\n")
 
+        # FIX (nhỏ 2): tạo thư mục output trước khi worker bắt đầu ghi file,
+        # tránh FileNotFoundError khi write_json chạy lần đầu.
         (outlogs / "summary").mkdir(parents=True, exist_ok=True)
 
         request_queue: GoogleAIRequestQueue[tuple[int, dict]] = GoogleAIRequestQueue(
@@ -225,10 +198,11 @@ def main(root_dir: str | Path | None = None):
         request_queue.close()
 
         result_by_index: dict[int, str] = {}
-        results_lock  = threading.Lock()
+        results_lock = threading.Lock()
         progress_lock = threading.Lock()
-        progress      = {"done": 0}
-        worker_count  = max_in_flight_requests
+        progress = {"done": 0}
+
+        worker_count = max_in_flight_requests
 
         def worker(worker_id: int) -> None:
             worker_client = genai.Client(api_key=api_key)
@@ -236,6 +210,11 @@ def main(root_dir: str | Path | None = None):
                 task = request_queue.take_ready(timeout=1.0)
                 if task is None:
                     stats = request_queue.stats()
+                    # FIX (bug 1): phải kiểm tra thêm in_flight == 0.
+                    # Nếu queue đã closed + pending == 0 nhưng vẫn còn
+                    # in_flight > 0, tức là có task đang chạy ở worker khác
+                    # và chưa gọi mark_done() → KHÔNG được thoát, phải tiếp
+                    # tục chờ. Thoát sớm ở đây sẽ khiến queue bị treo mãi.
                     if stats.closed and stats.pending == 0 and stats.in_flight == 0:
                         break
                     continue
@@ -248,33 +227,27 @@ def main(root_dir: str | Path | None = None):
                 )
 
                 pred_output = {
-                    "dataset_name":              current_prompt.get("dataset_name", "unknown"),
-                    "org_file_path":             current_prompt.get("org_file_path"),
-                    "processed_file_path":       current_prompt.get("processed_file_path"),
-                    "vulnerabilities":           current_prompt.get("vulnerabilities", []),
+                    "dataset_name": current_prompt.get("dataset_name", "unknown"),
+                    "org_file_path": current_prompt.get("org_file_path"),
+                    "processed_file_path": current_prompt.get("processed_file_path"),
+                    "vulnerabilities": current_prompt.get("vulnerabilities", []),
                     "predicted_vulnerabilities": [],
-                    "reasoning":                 [],
-                    "log_file":                  "",
-                    "error":                     None,
-                    "retries":                   0,
+                    "reasoning": [],
+                    "log_file": "",
+                    "error": None,
                 }
 
-                attempt_count = 0
                 try:
-                    def _call():
-                        nonlocal attempt_count
-                        attempt_count += 1
-                        return worker_client.models.generate_content(
-                            model=gemma_model,
-                            contents=current_prompt["content"],
-                            config=types.GenerateContentConfig(
-                                thinking_config=types.ThinkingConfig(include_thoughts=True),
-                                temperature=0,
+                    response = worker_client.models.generate_content(
+                        model=gemma_model,
+                        contents=current_prompt["content"],
+                        config=types.GenerateContentConfig(
+                            thinking_config=types.ThinkingConfig(
+                                include_thoughts=True,
                             ),
-                        )
-
-                    response = call_with_retry(_call)
-                    pred_output["retries"] = attempt_count - 1
+                            temperature=0,
+                        ),
+                    )
 
                     write_json(log_file, response.model_dump())
 
@@ -296,31 +269,36 @@ def main(root_dir: str | Path | None = None):
                                     pred_output["predicted_vulnerabilities"].extend(predicted)
 
                 except Exception as e:
-                    pred_output["error"]   = str(e)
-                    pred_output["retries"] = attempt_count - 1
+                    pred_output["error"] = str(e)
 
                 finally:
-                    # Giải phóng slot trước, ghi file sau
+                    # FIX (bug 2): mark_done() được tách ra khỏi try/except của
+                    # write_json. Trước đây nó nằm trong finally của block ghi
+                    # file, nên nếu write_json throw thì mark_done() bị nuốt lỗi.
+                    # Tách riêng đảm bảo slot luôn được giải phóng đúng cách,
+                    # và nếu mark_done() lỗi thì exception sẽ nổi lên rõ ràng.
                     in_flight_now = request_queue.mark_done()
 
                     try:
                         result_file = log_file.with_name(log_file.stem + "_result.json")
                         pred_output["log_file"] = str(result_file)
+                        print(f"Writing result for prompt #{prompt_idx} to {result_file}:\n{json.dumps(pred_output, indent=2)}\n")
                         write_json(result_file, pred_output)
+
                         with results_lock:
                             result_by_index[prompt_idx] = str(result_file)
-                    except Exception as write_err:
-                        print(f"Failed to write result for prompt #{prompt_idx}: {write_err}")
+                    except Exception as result_write_error:
+                        print(
+                            f"Failed to write result for prompt #{prompt_idx}: "
+                            f"{result_write_error}"
+                        )
 
                     with progress_lock:
                         progress["done"] += 1
                         done_now = progress["done"]
-
-                    retry_info = f" retries={pred_output['retries']}" if pred_output["retries"] > 0 else ""
-                    status     = "❌" if pred_output["error"] else "✅"
                     print(
-                        f"[{gemma_model}] worker-{worker_id} {status} "
-                        f"{done_now}/{total_prompts} | in_flight={in_flight_now}{retry_info}"
+                        f"[{gemma_model}] worker-{worker_id} finished "
+                        f"{done_now}/{total_prompts} | in_flight={in_flight_now}"
                     )
 
         workers = []
