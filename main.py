@@ -203,7 +203,7 @@ def main(root_dir: str | Path | None = None):
     )
     print(f"Runtime root: {runtime_root}")
 
-    for gemma_model in ["gemma-4-26b-a4b-it", "gemma-4-31b-it"]:
+    for gemma_model in ["gemma-4-31b-it"]:
         print(f"=== STARTING EVALUATION WITH MODEL {gemma_model} ===")
         data          = smartbugs_prompt(runtime_root=runtime_root)
         outlogs       = Path(data["outlogs"])
