@@ -11,6 +11,7 @@ clear error if missing.
 """
 from __future__ import annotations
 
+import torch
 import warnings
 from typing import Any, List
 from llm_adapter import LLMAdapter
@@ -72,7 +73,10 @@ class HFCodeGemmaAdapter(LLMAdapter):
         self.device = device
         # Load tokenizer + model (may download large weights)
         self.tokenizer = GemmaTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+            use_auth_token=True)
         if device:
             try:
                 self.model.to(device)

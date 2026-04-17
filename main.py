@@ -384,4 +384,23 @@ def main(root_dir: str | Path | None = None, adapters: list | None = None):
 
 
 if __name__ == "__main__":
-    main()
+    # Example: run with a Gemini adapter instance and the HF CodeGemma adapter class
+    try:
+        from hf_codegemma import HFCodeGemmaAdapter
+    except Exception:
+        HFCodeGemmaAdapter = None
+
+    adapters = []
+    # Gemini adapter instance (requires GOOGLE_API_KEY in env)
+    try:
+        adapters.append(GeminiAdapter(api_key=os.getenv("GOOGLE_API_KEY"), model_name="gemma-4-31b-it"))
+    except Exception:
+        # ignore if genai not configured; main() will still validate env
+        pass
+
+    # Add HF adapter class (callable). Instantiation (and heavy model load)
+    # will happen per-worker when `adapter_factory()` is called.
+    if HFCodeGemmaAdapter is not None:
+        adapters.append(HFCodeGemmaAdapter)
+
+    main(adapters=adapters)
