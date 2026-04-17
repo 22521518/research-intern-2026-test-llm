@@ -255,7 +255,7 @@ def main(root_dir: str | Path | None = None, adapters: list | None = None):
             requests_per_minute=requests_per_minute,
         )
 
-        for idx, current_prompt in enumerate(data["prompts"][:1], start=1):  # Process only the first 10 prompts as an example
+        for idx, current_prompt in enumerate(data["prompts"], start=1):  # Process only the first 10 prompts as an example
             if isinstance(current_prompt, dict):
                 request_queue.put((idx, current_prompt))
             else:
