@@ -25,6 +25,7 @@ except Exception:
     pass
 
 OUTPUT_LOG_DIR = project_root / "log"
+from llm_adapter import LLMAdapter, GeminiAdapter
 
 # ---------------------------------------------------------------------------
 # Retry config
@@ -187,7 +188,18 @@ def build_log_file(outlogs: Path, prompt_idx: int, org_file_path: str | None) ->
 # Main
 # ---------------------------------------------------------------------------
 
-def main(root_dir: str | Path | None = None):
+def main(root_dir: str | Path | None = None, adapters: list | None = None):
+    """Run evaluation.
+
+    Args:
+        root_dir: runtime root directory.
+        adapters: optional list of LLM adapter descriptors. Each item may be:
+            - an `LLMAdapter` instance (will be used as-is), or
+            - a callable factory returning an `LLMAdapter` instance, or
+            - a class (callable) that constructs an `LLMAdapter` when called.
+            If `None`, a default Gemini adapter is used.
+    """
+
     runtime_root = Path(root_dir).expanduser().resolve() if root_dir else project_root
 
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -203,11 +215,39 @@ def main(root_dir: str | Path | None = None):
     )
     print(f"Runtime root: {runtime_root}")
 
-    for gemma_model in ["gemma-4-31b-it"]:
-        print(f"=== STARTING EVALUATION WITH MODEL {gemma_model} ===")
-        data          = smartbugs_prompt(runtime_root=runtime_root)
-        outlogs       = Path(data["outlogs"])
-        total_prompts = len(data["prompts"])
+    # Normalize adapters list and provide a default if none given
+    if adapters is None:
+        adapters = [GeminiAdapter(api_key=api_key, model_name="gemma-4-31b-it")]
+
+    for adapter_entry in adapters:
+        # Determine a human-friendly adapter name without forcing heavy instantiation
+        if isinstance(adapter_entry, LLMAdapter):
+            llm_name = adapter_entry.name
+            preview_factory = lambda entry=adapter_entry: entry
+        elif callable(adapter_entry):
+            # Try to infer name from the callable/class
+            inferred = getattr(adapter_entry, "name", None) or getattr(adapter_entry, "__name__", None)
+            if inferred and inferred != "<lambda>":
+                llm_name = inferred
+                preview_factory = adapter_entry
+            else:
+                # fallback: attempt a light instantiation to get the name
+                try:
+                    preview = adapter_entry()
+                    llm_name = getattr(preview, "name", getattr(preview, "model_name", preview.__class__.__name__))
+                    preview_factory = adapter_entry
+                except Exception:
+                    llm_name = str(adapter_entry)
+                    preview_factory = adapter_entry
+        else:
+            llm_name = str(adapter_entry)
+            preview_factory = lambda: adapter_entry
+
+        print(f"=== STARTING EVALUATION WITH LLM {llm_name} ===")
+        data = smartbugs_prompt(runtime_root=runtime_root)
+        # place logs under a subfolder per LLM to avoid collisions
+        outlogs = Path(data["outlogs"]) / llm_name.replace("/", "-")
+        total_prompts = len(data["prompts"]) 
         print(f"Total prompts to process: {total_prompts}\n")
 
         (outlogs / "summary").mkdir(parents=True, exist_ok=True)
@@ -230,8 +270,12 @@ def main(root_dir: str | Path | None = None):
         progress      = {"done": 0}
         worker_count  = max_in_flight_requests
 
+        # Worker factory: create adapter instances per worker by calling the
+        # preview_factory (which may return a shared instance or create new ones).
+        adapter_factory = preview_factory
+
         def worker(worker_id: int) -> None:
-            worker_client = genai.Client(api_key=api_key)
+            worker_adapter = adapter_factory()
             while True:
                 task = request_queue.take_ready(timeout=1.0)
                 if task is None:
@@ -264,8 +308,7 @@ def main(root_dir: str | Path | None = None):
                     def _call():
                         nonlocal attempt_count
                         attempt_count += 1
-                        return worker_client.models.generate_content(
-                            model=gemma_model,
+                        return worker_adapter.generate(
                             contents=current_prompt["content"],
                             config=types.GenerateContentConfig(
                                 thinking_config=types.ThinkingConfig(include_thoughts=True),
@@ -319,7 +362,7 @@ def main(root_dir: str | Path | None = None):
                     retry_info = f" retries={pred_output['retries']}" if pred_output["retries"] > 0 else ""
                     status     = "❌" if pred_output["error"] else "✅"
                     print(
-                        f"[{gemma_model}] worker-{worker_id} {status} "
+                        f"[{llm_name}] worker-{worker_id} {status} "
                         f"{done_now}/{total_prompts} | in_flight={in_flight_now}{retry_info}"
                     )
 
@@ -337,7 +380,7 @@ def main(root_dir: str | Path | None = None):
             outlogs / "summary" / f"{datetime.now().strftime('%H%M%S')}.json",
             summarized_results,
         )
-        print(f"=== FINISHED EVALUATION WITH MODEL {gemma_model} ===\n\n")
+        print(f"=== FINISHED EVALUATION WITH LLM {llm_name} ===\n\n")
 
 
 if __name__ == "__main__":

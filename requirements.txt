@@ -1,2 +1,4 @@
 regex
 google-genai
+transformers
+torch
