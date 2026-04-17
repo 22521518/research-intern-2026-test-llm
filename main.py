@@ -201,8 +201,8 @@ def main(root_dir: str | Path | None = None, adapters: list | None = None):
     runtime_root = Path(root_dir).expanduser().resolve() if root_dir else project_root
 
     api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY is not set")
+    # if not api_key:
+    #     raise RuntimeError("GOOGLE_API_KEY is not set")
 
     requests_per_minute    = get_env_int("REQUESTS_PER_MINUTE", 12, 1)
     max_in_flight_requests = get_env_int("MAX_IN_FLIGHT_REQUESTS", 4, 1)
