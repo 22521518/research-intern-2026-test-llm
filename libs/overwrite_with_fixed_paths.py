@@ -6,11 +6,6 @@ import sys
 from anyio import Path
 
 
-project_root = Path(__file__).resolve().parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-    
-
 def overwrite_with_fixed_paths(target_file, base_dir="project_root"):
     # 1. Đọc dữ liệu hiện tại
     if not os.path.exists(target_file):
