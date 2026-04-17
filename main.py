@@ -3,8 +3,6 @@ from datetime import datetime
 import sys
 import os
 import json
-from google import genai
-from google.genai import types
 import re
 import threading
 import time
@@ -257,7 +255,7 @@ def main(root_dir: str | Path | None = None, adapters: list | None = None):
             requests_per_minute=requests_per_minute,
         )
 
-        for idx, current_prompt in enumerate(data["prompts"], start=1):
+        for idx, current_prompt in enumerate(data["prompts"][:1], start=1):  # Process only the first 10 prompts as an example
             if isinstance(current_prompt, dict):
                 request_queue.put((idx, current_prompt))
             else:
@@ -309,34 +307,30 @@ def main(root_dir: str | Path | None = None, adapters: list | None = None):
                         nonlocal attempt_count
                         attempt_count += 1
                         return worker_adapter.generate(
-                            contents=current_prompt["content"],
-                            config=types.GenerateContentConfig(
-                                thinking_config=types.ThinkingConfig(include_thoughts=True),
-                                temperature=0,
-                            ),
+                            prompt=current_prompt["content"],
+                            temperature=0.0,
+                            include_thoughts=True,
                         )
 
-                    response = call_with_retry(_call)
+                    response_text, thinking_text = call_with_retry(_call)
                     pred_output["retries"] = attempt_count - 1
 
-                    write_json(log_file, response.model_dump())
+                    write_json(
+                        log_file,
+                        {
+                            "adapter": getattr(worker_adapter, "name", worker_adapter.__class__.__name__),
+                            "response": response_text,
+                            "thinking": thinking_text,
+                        },
+                    )
 
-                    if (
-                        response.candidates
-                        and response.candidates[0].content
-                        and response.candidates[0].content.parts
-                    ):
-                        for part in response.candidates[0].content.parts:
-                            part_text = getattr(part, "text", None)
-                            if not part_text:
-                                continue
-                            if getattr(part, "thought", False):
-                                pred_output["reasoning"].append(part_text)
-                            else:
-                                processed_answer = parse_json_answer(part_text)
-                                predicted = processed_answer.get("vulnerabilities", [])
-                                if isinstance(predicted, list):
-                                    pred_output["predicted_vulnerabilities"].extend(predicted)
+                    if thinking_text:
+                        pred_output["reasoning"].append(thinking_text)
+
+                    processed_answer = parse_json_answer(response_text)
+                    predicted = processed_answer.get("vulnerabilities", [])
+                    if isinstance(predicted, list):
+                        pred_output["predicted_vulnerabilities"].extend(predicted)
 
                 except Exception as e:
                     pred_output["error"]   = str(e)
