@@ -1,0 +1,30 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/unchecked_low_level_calls/0x663e4229142a27f00bafb5d087e1e730648314c3.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/unchecked_low_level_calls/0x663e4229142a27f00bafb5d087e1e730648314c3.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                1152
+            ],
+            "category": "unchecked_low_level_calls"
+        },
+        {
+            "lines": [
+                1496
+            ],
+            "category": "unchecked_low_level_calls"
+        },
+        {
+            "lines": [
+                2467
+            ],
+            "category": "unchecked_low_level_calls"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260418_033207/MyPrompt/045540_435533_00030_dataset-unchecked_low_level_calls-0x663e4229142a27f00bafb5d087e1e730648314c3.sol_result.json",
+    "error": "CUDA out of memory. Tried to allocate 39.99 GiB. GPU 0 has a total capacity of 14.56 GiB of which 2.40 GiB is free. Including non-PyTorch memory, this process has 12.16 GiB memory in use. Of the allocated memory 8.74 GiB is allocated by PyTorch, and 3.27 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)",
+    "retries": 0
+}
