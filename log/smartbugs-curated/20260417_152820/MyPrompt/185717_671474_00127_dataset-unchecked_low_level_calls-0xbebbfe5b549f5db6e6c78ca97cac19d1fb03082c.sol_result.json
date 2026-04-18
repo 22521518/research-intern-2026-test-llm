@@ -1,0 +1,18 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/unchecked_low_level_calls/0xbebbfe5b549f5db6e6c78ca97cac19d1fb03082c.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/unchecked_low_level_calls/0xbebbfe5b549f5db6e6c78ca97cac19d1fb03082c.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                14
+            ],
+            "category": "unchecked_low_level_calls"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/185717_671474_00127_dataset-unchecked_low_level_calls-0xbebbfe5b549f5db6e6c78ca97cac19d1fb03082c.sol_result.json",
+    "error": "cannot access local variable 'json_match' where it is not associated with a value",
+    "retries": 0
+}

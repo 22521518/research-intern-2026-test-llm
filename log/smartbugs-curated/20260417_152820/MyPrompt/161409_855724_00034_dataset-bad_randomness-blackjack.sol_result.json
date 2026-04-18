@@ -1,0 +1,30 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/bad_randomness/blackjack.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/bad_randomness/blackjack.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                17
+            ],
+            "category": "bad_randomness"
+        },
+        {
+            "lines": [
+                19
+            ],
+            "category": "bad_randomness"
+        },
+        {
+            "lines": [
+                21
+            ],
+            "category": "bad_randomness"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/161409_855724_00034_dataset-bad_randomness-blackjack.sol_result.json",
+    "error": "cannot access local variable 'json_match' where it is not associated with a value",
+    "retries": 0
+}

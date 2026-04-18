@@ -1,0 +1,18 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/arithmetic/integer_overflow_add.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/arithmetic/integer_overflow_add.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                17
+            ],
+            "category": "arithmetic"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/155833_997347_00022_dataset-arithmetic-integer_overflow_add.sol_result.json",
+    "error": "cannot access local variable 'json_match' where it is not associated with a value",
+    "retries": 0
+}

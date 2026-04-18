@@ -28,7 +28,6 @@ pip-wheel-metadata/
 .ipynb_checkpoints/
 
 # Logs and results
-log/
 logs/
 *.log
 *.result.json
@@ -53,3 +52,6 @@ dist/
 build/
 *.egg
 .venv*/
+
+# Ignore specific files
+log

@@ -1,0 +1,24 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/front_running/odds_and_evens.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/front_running/odds_and_evens.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                25
+            ],
+            "category": "front_running"
+        },
+        {
+            "lines": [
+                28
+            ],
+            "category": "front_running"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/164904_130308_00051_dataset-front_running-odds_and_evens.sol_result.json",
+    "error": "cannot access local variable 'json_match' where it is not associated with a value",
+    "retries": 0
+}

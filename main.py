@@ -186,10 +186,11 @@ def build_log_file(outlogs: Path, prompt_idx: int, org_file_path: str | None) ->
 # Main
 # ---------------------------------------------------------------------------
 
-def main(root_dir: str | Path | None = None, adapters: list | None = None):
+def main(get_data_prompt = smartbugs_prompt, root_dir: str | Path | None = None, adapters: list | None = None):
     """Run evaluation.
 
     Args:
+        get_data_prompt: A function to retrieve the evaluation data.
         root_dir: runtime root directory.
         adapters: optional list of LLM adapter descriptors. Each item may be:
             - an `LLMAdapter` instance (will be used as-is), or
@@ -242,7 +243,7 @@ def main(root_dir: str | Path | None = None, adapters: list | None = None):
             preview_factory = lambda: adapter_entry
 
         print(f"=== STARTING EVALUATION WITH LLM {llm_name} ===")
-        data = smartbugs_prompt(runtime_root=runtime_root)
+        data = get_data_prompt(runtime_root=runtime_root)
         # place logs under a subfolder per LLM to avoid collisions
         outlogs = Path(data["outlogs"]) / llm_name.replace("/", "-")
         total_prompts = len(data["prompts"]) 
@@ -255,7 +256,7 @@ def main(root_dir: str | Path | None = None, adapters: list | None = None):
             requests_per_minute=requests_per_minute,
         )
 
-        for idx, current_prompt in enumerate(data["prompts"], start=1):  # Process only the first 10 prompts as an example
+        for idx, current_prompt in enumerate(data["prompts"][:1], start=1):  # Process only the first 10 prompts as an example
             if isinstance(current_prompt, dict):
                 request_queue.put((idx, current_prompt))
             else:
