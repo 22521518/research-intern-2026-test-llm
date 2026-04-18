@@ -1,0 +1,30 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/arithmetic/integer_overflow_mapping_sym_1.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/arithmetic/integer_overflow_mapping_sym_1.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                16
+            ],
+            "category": "arithmetic"
+        }
+    ],
+    "predicted_vulnerabilities": [
+        {
+            "vulnerability_type": "arithmetic",
+            "evidence": [
+                "9"
+            ]
+        }
+    ],
+    "reasoning": [
+        [
+            "**Vulnerability Analysis:**\n\n1. **Integer Overflow:** The `init` function subtracts `v` from `map[k]`. If `v` is larger than `map[k]`, an integer overflow occurs, leading to an unexpected result.\n\n**Vulnerable Line:** 9 (map[k] -= v;)\n\n**Execution & Causality:**\n* Trigger: Subtraction operation\n* State Issue: Integer overflow\n* Exploitable Behavior: The overflow can result in an underflow, setting `map[k]` to a very large negative value.\n\n**Causality:**\n* State: `map[k]` contains a non-zero value\n* Guard: None\n* Transition: Subtraction operation\n* Capability: Attacker can supply a large value for `v` to trigger the overflow\n* Outcome: `map[k]` becomes a very large negative value\n\n",
+            "\n\n```json\n{\n  \"vulnerabilities\": [\n    {\n      \"vulnerability_type\": \"arithmetic\",\n      \"evidence\": [\"9\"]\n    }\n  ]\n}\n```<eos>"
+        ]
+    ],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/160215_626055_00024_dataset-arithmetic-integer_overflow_mapping_sym_1.sol_result.json",
+    "error": null,
+    "retries": 0
+}

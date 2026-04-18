@@ -1,0 +1,24 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/front_running/eth_tx_order_dependence_minimal.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/front_running/eth_tx_order_dependence_minimal.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                23
+            ],
+            "category": "front_running"
+        },
+        {
+            "lines": [
+                31
+            ],
+            "category": "front_running"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/164733_065328_00050_dataset-front_running-eth_tx_order_dependence_minimal.sol_result.json",
+    "error": "cannot access local variable 'json_match' where it is not associated with a value",
+    "retries": 0
+}

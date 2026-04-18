@@ -32,7 +32,6 @@ log/
 logs/
 *.log
 *.result.json
-*_result.json
 
 # Test / coverage
 .pytest_cache/

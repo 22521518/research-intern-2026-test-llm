@@ -1,0 +1,27 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/bad_randomness/lucky_doubler.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/bad_randomness/lucky_doubler.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                127,
+                128,
+                129,
+                130
+            ],
+            "category": "bad_randomness"
+        },
+        {
+            "lines": [
+                132
+            ],
+            "category": "bad_randomness"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/162344_692938_00038_dataset-bad_randomness-lucky_doubler.sol_result.json",
+    "error": "cannot access local variable 'json_match' where it is not associated with a value",
+    "retries": 0
+}

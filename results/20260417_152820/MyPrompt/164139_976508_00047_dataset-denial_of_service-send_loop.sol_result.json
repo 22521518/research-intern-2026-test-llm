@@ -1,0 +1,18 @@
+{
+    "dataset_name": "smartbugs-curated",
+    "org_file_path": "dataset/denial_of_service/send_loop.sol",
+    "processed_file_path": "/kaggle/working/research-intern-2026-test-llm/data/smartbugs-curated-data/dataset/denial_of_service/send_loop.sol",
+    "vulnerabilities": [
+        {
+            "lines": [
+                24
+            ],
+            "category": "denial_of_service"
+        }
+    ],
+    "predicted_vulnerabilities": [],
+    "reasoning": [],
+    "log_file": "/kaggle/working/research-intern-2026-test-llm/log/smartbugs-curated/20260417_152820/MyPrompt/164139_976508_00047_dataset-denial_of_service-send_loop.sol_result.json",
+    "error": "cannot access local variable 'json_match' where it is not associated with a value",
+    "retries": 0
+}
