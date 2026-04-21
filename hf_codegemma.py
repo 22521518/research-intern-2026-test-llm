@@ -11,23 +11,77 @@ quantization_config = BitsAndBytesConfig(
 )
 
 model_repo_id = "google/codegemma-7b-it"
-local_model_dir = os.path.join(os.path.dirname(__file__), "codegemma-7b-it")
 
-# 0. Tải model từ HuggingFace Hub vào folder cục bộ
-print(f"Downloading model {model_repo_id} to {local_model_dir}...")
-model_path = snapshot_download(repo_id=model_repo_id, local_dir=local_model_dir)
-print(f"Model downloaded to: {model_path}")
+# Global variables for model and tokenizer (lazy load)
+_model = None
+_tokenizer = None
+_model_path = None
 
-# 2. Load Tokenizer từ folder cục bộ
-tokenizer = GemmaTokenizer.from_pretrained(model_path)
 
-# 3. Load Model từ folder cục bộ với tự động phân bổ GPU (device_map="auto")
-model = AutoModelForCausalLM.from_pretrained(
-    model_path,
-    quantization_config=quantization_config,
-    device_map="auto",  # Tự động chia model qua 2 card T4
-    dtype="auto"
-)
+def get_model_local_dir(custom_dir: str | None = None) -> str:
+    """Xác định thư mục cục bộ để lưu model.
+    
+    Args:
+        custom_dir: Nếu cung cấp, dùng folder này. 
+                   Nếu None, kiểm tra Kaggle, nếu không thì dùng folder cạnh file này.
+    """
+    if custom_dir:
+        return custom_dir
+    
+    # Kiểm tra nếu đang chạy trên Kaggle
+    if os.path.exists("/kaggle/working"):
+        return "/kaggle/working/codegemma-7b-it"
+    
+    # Default: folder cạnh file này
+    return os.path.join(os.path.dirname(__file__), "codegemma-7b-it")
+
+
+def init_model(model_dir: str | None = None) -> None:
+    """Khởi tạo model và tokenizer từ HuggingFace Hub.
+    
+    Args:
+        model_dir: Thư mục cục bộ để lưu model. 
+                  Nếu None, sẽ tự chọn (Kaggle hoặc cạnh file này).
+    """
+    global _model, _tokenizer, _model_path
+    
+    if _model is not None:
+        return  # Model đã load rồi
+    
+    local_model_dir = get_model_local_dir(model_dir)
+    print(f"Downloading model {model_repo_id} to {local_model_dir}...")
+    _model_path = snapshot_download(repo_id=model_repo_id, local_dir=local_model_dir)
+    print(f"Model downloaded to: {_model_path}")
+    
+    _tokenizer = GemmaTokenizer.from_pretrained(_model_path)
+    _model = AutoModelForCausalLM.from_pretrained(
+        _model_path,
+        quantization_config=quantization_config,
+        device_map="auto",
+        dtype="auto"
+    )
+
+
+# Lazy initialization: load model on first access
+@property
+def model():
+    global _model
+    if _model is None:
+        init_model()
+    return _model
+
+
+@property
+def tokenizer():
+    global _tokenizer
+    if _tokenizer is None:
+        init_model()
+    return _tokenizer
+
+
+# For backward compatibility, init on first import (optional comment out if prefer lazy)
+# Uncomment the line below if you want to load model immediately on import
+# init_model()
 
 # # 4. Chuẩn bị Input (Không cần model.to(device) vì device_map đã lo việc đó)
 # input_text = "Write me a Python function to calculate the nth fibonacci number."
@@ -77,6 +131,9 @@ def parse_result(text):
     return thinking_part, json_match
 
 def prompt_me(prompt_me: str, enable_stream = False):
+    # Initialize model if not already done
+    init_model()
+    
     # 5. Chuyển đổi sang định dạng OAI Messages
     messages = [
         {"role": "user", "content": prompt_me}
@@ -84,7 +141,7 @@ def prompt_me(prompt_me: str, enable_stream = False):
     
     # 6. Apply Template và mồi tag <thinking>
     # Lưu ý: CodeGemma dùng tokenizer để apply template thay vì processor nếu chỉ xử lý text
-    prompt_text = tokenizer.apply_chat_template(
+    prompt_text = _tokenizer.apply_chat_template(
         messages, 
         tokenize=False, 
         add_generation_prompt=True
@@ -93,15 +150,15 @@ def prompt_me(prompt_me: str, enable_stream = False):
     <thinking>\n"""  # Ép model phải phân tích trước
     
     # 7. Chuẩn bị Inputs
-    inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
+    inputs = _tokenizer(prompt_text, return_tensors="pt").to(_model.device)
     input_length = inputs["input_ids"].shape[-1]
     
     # 8. Cấu hình Streamer để xem AI trả lời realtime
-    streamer = TextStreamer(tokenizer, skip_prompt=True) if enable_stream else None
+    streamer = TextStreamer(_tokenizer, skip_prompt=True) if enable_stream else None
     
     # 9. Generate
     
-    outputs = model.generate(
+    outputs = _model.generate(
         **inputs, 
         streamer=streamer, 
         # Sử dụng giá trị nhỏ hơn giữa giới hạn của bạn và tài nguyên còn lại
@@ -109,21 +166,23 @@ def prompt_me(prompt_me: str, enable_stream = False):
         do_sample=True,
         temperature=0.5, # Giảm thêm xuống 0.1 để cấu trúc JSON cực kỳ chặt chẽ
         top_p= 0.9,       # Thu hẹp top_p một chút để tránh các token "sáng tạo" làm hỏng JSON
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.pad_token_id
+        eos_token_id=_tokenizer.eos_token_id,
+        pad_token_id=_tokenizer.pad_token_id
     )
     
     # 10. Giải mã Response (Chỉ lấy phần AI mới sinh ra)
-    full_response = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=False)
+    full_response = _tokenizer.decode(outputs[0][input_length:], skip_special_tokens=False)
     return parse_result(full_response)
 
 from llm_adapter import LLMAdapter
 
 class HFCodeGemmaAdapter(LLMAdapter):
-    def __init__(self, api_key: str = "", model_name: str = "", name: str | None = None) -> None:
+    def __init__(self, api_key: str = "", model_name: str = "", name: str | None = None, model_dir: str | None = None) -> None:
         super().__init__(model_name=model_name, name=name)
-        if not api_key:
+        if not os.getenv("HF_TOKEN"):
             raise ValueError("api_key is required for HFCodeGemmaAdapter. Set a HuggingFace token or pass api_key.")
+        # Initialize model with custom directory if provided
+        init_model(model_dir=model_dir)
 
     def generate(
         self,

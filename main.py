@@ -392,6 +392,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Run in test mode with a limited number of prompts.",
     )
+    parser.add_argument(
+        "--kaggle",
+        action="store_true",
+        help="Load HuggingFace model to Kaggle's default directory (/kaggle/working/). If not set, uses local folder.",
+    )
     args = parser.parse_args()
     # Example: run with a Gemini adapter instance and the HF CodeGemma adapter class
     from hf_codegemma import HFCodeGemmaAdapter
@@ -400,9 +405,13 @@ if __name__ == "__main__":
     if HFCodeGemmaAdapter is None:
         raise Exception("Sorry, HFCodeGemmaAdapter is not available. Please check your imports and model setup.")
 
+    # Determine model directory based on --kaggle flag
+    model_dir = "/kaggle/working/codegemma-7b-it" if args.kaggle else None
+
     # Add HF adapter class (callable). Instantiation (and heavy model load)
     # will happen per-worker when `adapter_factory()` is called.
-    adapters.append(HFCodeGemmaAdapter())
+    # We wrap it in a lambda to pass model_dir to the adapter constructor.
+    adapters.append(lambda: HFCodeGemmaAdapter(model_dir=model_dir))
     summary_path = main(adapters=adapters, test=args.test)
     output_path = summary_path.parent / f"{summary_path.stem}_flattened.csv"
     rows = parse_summary(summary_path)
