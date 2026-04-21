@@ -1,8 +1,0 @@
-{
-    "adapter": "MyPrompt",
-    "response": "{\n  \"vulnerabilities\": []\n}",
-    "thinking": [
-        "**Vulnerability Analysis:**\n\n**Deposit Function:**\n\n* **Access Control:** N/A\n* **Arithmetic:** N/A\n* **Bad Randomness:** N/A\n* **Denial of Service:** N/A\n* **Front Running:** N/A\n* **Reentrancy:** N/A\n* **Short Addresses:** N/A\n* **Time Manipulation:** N/A\n* **Unchecked Low-Level Calls:** N/A\n\n**CashOut Function:**\n\n* **Access Control:** N/A\n* **Arithmetic:** N/A\n* **Bad Randomness:** N/A\n* **Denial of Service:** N/A\n* **Front Running:** N/A\n* **Reentrancy:** N/A\n* **Short Addresses:** N/A\n* **Time Manipulation:** N/A\n* **Unchecked Low-Level Calls:** N/A\n\n**Contract:**\n\n* **Access Control:** N/A\n* **Arithmetic:** N/A\n* **Bad Randomness:** N/A\n* **Denial of Service:** N/A\n* **Front Running:** N/A\n* **Reentrancy:** N/A\n* **Short Addresses:** N/A\n* **Time Manipulation:** N/A\n* **Unchecked Low-Level Calls:** N/A\n\n**Log Contract:**\n\n* **Access Control:** N/A\n* **Arithmetic:** N/A\n* **Bad Randomness:** N/A\n* **Denial of Service:** N/A\n* **Front Running:** N/A\n* **Reentrancy:** N/A\n* **Short Addresses:** N/A\n* **Time Manipulation:** N/A\n* **Unchecked Low-Level Calls:** N/A\n\n**Conclusion:**\n\nNo vulnerabilities were identified in the contract.\n\n",
-        "\n\n```json\n{\n  \"vulnerabilities\": []\n}\n```<eos>"
-    ]
-}

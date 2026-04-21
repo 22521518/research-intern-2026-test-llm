@@ -18,22 +18,25 @@ _tokenizer = None
 _model_path = None
 
 
-def get_model_local_dir(custom_dir: str | None = None) -> str:
+def get_model_local_dir(custom_dir: str | None = None) -> str | None:
     """Xác định thư mục cục bộ để lưu model.
-    
+
     Args:
-        custom_dir: Nếu cung cấp, dùng folder này. 
-                   Nếu None, kiểm tra Kaggle, nếu không thì dùng folder cạnh file này.
+        custom_dir: Nếu cung cấp, dùng folder này.
+                    Nếu None và đang chạy trên Kaggle, trả về ``None`` để không chỉ định
+                    `local_dir` cho ``snapshot_download`` (kaggle dùng cache mặc định).
+                    Nếu None và không phải Kaggle, tải vào thư mục root của project
+                    (``os.getcwd()/codegemma-7b-it``).
     """
     if custom_dir:
         return custom_dir
-    
-    # Kiểm tra nếu đang chạy trên Kaggle
+
+    # Nếu đang chạy trên Kaggle, không chỉ định local_dir (trả về None)
     if os.path.exists("/kaggle/working"):
-        return "/kaggle/working/codegemma-7b-it"
-    
-    # Default: folder cạnh file này
-    return os.path.join(os.path.dirname(__file__), "codegemma-7b-it")
+        return None
+
+    # Mặc định: folder dưới root project
+    return os.path.join(os.getcwd(), "codegemma-7b-it")
 
 
 def init_model(model_dir: str | None = None) -> None:
@@ -49,8 +52,14 @@ def init_model(model_dir: str | None = None) -> None:
         return  # Model đã load rồi
     
     local_model_dir = get_model_local_dir(model_dir)
-    print(f"Downloading model {model_repo_id} to {local_model_dir}...")
-    _model_path = snapshot_download(repo_id=model_repo_id, local_dir=local_model_dir)
+    # Nếu local_model_dir là None (ví dụ: Kaggle), không truyền local_dir —
+    # snapshot_download sẽ dùng cache mặc định của HF
+    if local_model_dir is None:
+        print(f"Downloading model {model_repo_id} using Hugging Face cache (no local_dir specified for Kaggle)...")
+        _model_path = snapshot_download(repo_id=model_repo_id)
+    else:
+        print(f"Downloading model {model_repo_id} to {local_model_dir}...")
+        _model_path = snapshot_download(repo_id=model_repo_id, local_dir=local_model_dir)
     print(f"Model downloaded to: {_model_path}")
     
     _tokenizer = GemmaTokenizer.from_pretrained(_model_path)
