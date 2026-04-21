@@ -24,9 +24,9 @@ Requirements:
 1. Identify ALL vulnerabilities that can be directly inferred from the provided code.
 
 2. If no vulnerability exists, return exactly:
-{
+{{
   "vulnerabilities": []
-}
+}}
 
 - An empty "vulnerabilities" array means the contract is normal.
 
@@ -59,28 +59,28 @@ IMPORTANT RULES:
 
 Return this exact schema:
 
-{
+{{
   "vulnerabilities": [
-    {
+    {{
       "vulnerability_type": "<type>",
       "evidence": "<line number or range>",
       "function_name": "<name>",
       "evidence_snippet": "<snippet>",
-      "execution": {
+      "execution": {{
         "trigger": "...",
         "state_issue": "...",
         "exploitable_behavior": "..."
-      },
-      "causality": {
+      }},
+      "causality": {{
         "state": "...",
         "guard": "...",
         "transition": "...",
         "capability": "...",
         "outcome": "..."
-      }
-    }
+      }}
+    }}
   ]
-}
+}}
 """
 
 DES_PROMPT = r"""

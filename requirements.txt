@@ -2,3 +2,6 @@ regex
 google-genai
 transformers
 torch
+accelerate
+bitsandbytes
+huggingface_hub

@@ -1,5 +1,7 @@
+import os
 import torch
 from transformers import GemmaTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TextStreamer
+from huggingface_hub import snapshot_download
 
 # 1. Cấu hình Quantization để tránh lỗi Out of Memory (OOM)
 quantization_config = BitsAndBytesConfig(
@@ -8,14 +10,20 @@ quantization_config = BitsAndBytesConfig(
     bnb_4bit_quant_type="nf4"
 )
 
-model_id = "google/codegemma-7b-it"
+model_repo_id = "google/codegemma-7b-it"
+local_model_dir = os.path.join(os.path.dirname(__file__), "codegemma-7b-it")
 
-# 2. Load Tokenizer
-tokenizer = GemmaTokenizer.from_pretrained(model_id)
+# 0. Tải model từ HuggingFace Hub vào folder cục bộ
+print(f"Downloading model {model_repo_id} to {local_model_dir}...")
+model_path = snapshot_download(repo_id=model_repo_id, local_dir=local_model_dir)
+print(f"Model downloaded to: {model_path}")
 
-# 3. Load Model với tự động phân bổ GPU (device_map="auto")
+# 2. Load Tokenizer từ folder cục bộ
+tokenizer = GemmaTokenizer.from_pretrained(model_path)
+
+# 3. Load Model từ folder cục bộ với tự động phân bổ GPU (device_map="auto")
 model = AutoModelForCausalLM.from_pretrained(
-    model_id,
+    model_path,
     quantization_config=quantization_config,
     device_map="auto",  # Tự động chia model qua 2 card T4
     dtype="auto"
@@ -114,6 +122,8 @@ from llm_adapter import LLMAdapter
 class HFCodeGemmaAdapter(LLMAdapter):
     def __init__(self, api_key: str = "", model_name: str = "", name: str | None = None) -> None:
         super().__init__(model_name=model_name, name=name)
+        if not api_key:
+            raise ValueError("api_key is required for HFCodeGemmaAdapter. Set a HuggingFace token or pass api_key.")
 
     def generate(
         self,

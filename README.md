@@ -16,6 +16,18 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+Additional packages (recommended for running or developing LLM adapters):
+
+```powershell
+# From a normal shell
+pip install -U -q transformers huggingface_hub
+pip install -q -U bitsandbytes accelerate
+
+# If you're in a Jupyter notebook use the `!` prefix:
+#!pip install -U -q transformers huggingface_hub
+#!pip install -q -U bitsandbytes accelerate
+```
+
 Nếu dự án đã có virtualenv sẵn (ví dụ `.venv_gg_genai`), kích hoạt thay vì tạo mới.
 
 **Chạy**

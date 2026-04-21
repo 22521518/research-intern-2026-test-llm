@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 from datetime import datetime
 import sys
@@ -187,7 +188,7 @@ def build_log_file(outlogs: Path, prompt_idx: int, org_file_path: str | None) ->
 # Main
 # ---------------------------------------------------------------------------
 
-def main(get_data_prompt = smartbugs_prompt, root_dir: str | Path | None = None, adapters: list | None = None):
+def main(get_data_prompt = smartbugs_prompt, root_dir: str | Path | None = None, adapters: list | None = None, test = False):
     """Run evaluation.
 
     Args:
@@ -257,7 +258,8 @@ def main(get_data_prompt = smartbugs_prompt, root_dir: str | Path | None = None,
             requests_per_minute=requests_per_minute,
         )
 
-        for idx, current_prompt in enumerate(data["prompts"], start=1):  # Process only the first 10 prompts as an example
+        length = 1 if test else len(data["prompts"])
+        for idx, current_prompt in enumerate(data["prompts"][:length], start=1):
             if isinstance(current_prompt, dict):
                 request_queue.put((idx, current_prompt))
             else:
@@ -382,6 +384,15 @@ def main(get_data_prompt = smartbugs_prompt, root_dir: str | Path | None = None,
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Evaluate LLMs on smart contract vulnerability detection. Each prompt is processed and logged with detailed reasoning and results. Outputs are saved in structured JSON files for analysis."
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run in test mode with a limited number of prompts.",
+    )
+    args = parser.parse_args()
     # Example: run with a Gemini adapter instance and the HF CodeGemma adapter class
     from hf_codegemma import HFCodeGemmaAdapter
 
@@ -391,8 +402,8 @@ if __name__ == "__main__":
 
     # Add HF adapter class (callable). Instantiation (and heavy model load)
     # will happen per-worker when `adapter_factory()` is called.
-    adapters.append(HFCodeGemmaAdapter)
-    summary_path = main(adapters=adapters)
+    adapters.append(HFCodeGemmaAdapter())
+    summary_path = main(adapters=adapters, test=args.test)
     output_path = summary_path.parent / f"{summary_path.stem}_flattened.csv"
     rows = parse_summary(summary_path)
     write_csv(rows, output_path)

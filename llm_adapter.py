@@ -42,6 +42,8 @@ class GeminiAdapter(LLMAdapter):
         super().__init__(model_name=model_name, name=name)
         if genai is None:
             raise RuntimeError("google.genai is required for GeminiAdapter")
+        if not api_key:
+            raise ValueError("api_key is required for GeminiAdapter. Set GOOGLE_API_KEY or pass api_key.")
         self.api_key = api_key
         self.client = genai.Client(api_key=api_key)
 
