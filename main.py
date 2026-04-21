@@ -11,6 +11,7 @@ project_root = Path(__file__).resolve().parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from parse_result_v2 import parse_summary, write_csv
 from prompt import PROMPT
 from libs.libfile import get_content, read_json, write_json, write_to_file
 from libs.google_ai_request_queue import GoogleAIRequestQueue
@@ -371,31 +372,28 @@ def main(get_data_prompt = smartbugs_prompt, root_dir: str | Path | None = None,
             thread.join()
 
         summarized_results = [result_by_index[i] for i in sorted(result_by_index)]
+        summary_path = outlogs / "summary" / f"{datetime.now().strftime('%H%M%S')}.json"
         write_json(
-            outlogs / "summary" / f"{datetime.now().strftime('%H%M%S')}.json",
+            summary_path,
             summarized_results,
         )
         print(f"=== FINISHED EVALUATION WITH LLM {llm_name} ===\n\n")
+    return summary_path
 
 
 if __name__ == "__main__":
     # Example: run with a Gemini adapter instance and the HF CodeGemma adapter class
-    try:
-        from hf_codegemma import HFCodeGemmaAdapter
-    except Exception:
-        HFCodeGemmaAdapter = None
+    from hf_codegemma import HFCodeGemmaAdapter
 
     adapters = []
-    # Gemini adapter instance (requires GOOGLE_API_KEY in env)
-    try:
-        adapters.append(GeminiAdapter(api_key=os.getenv("GOOGLE_API_KEY"), model_name="gemma-4-31b-it"))
-    except Exception:
-        # ignore if genai not configured; main() will still validate env
-        pass
+    if HFCodeGemmaAdapter is None:
+        raise Exception("Sorry, HFCodeGemmaAdapter is not available. Please check your imports and model setup.")
 
     # Add HF adapter class (callable). Instantiation (and heavy model load)
     # will happen per-worker when `adapter_factory()` is called.
-    if HFCodeGemmaAdapter is not None:
-        adapters.append(HFCodeGemmaAdapter)
-
-    main(adapters=adapters)
+    adapters.append(HFCodeGemmaAdapter)
+    summary_path = main(adapters=adapters)
+    output_path = summary_path.parent / f"{summary_path.stem}_flattened.csv"
+    rows = parse_summary(summary_path)
+    write_csv(rows, output_path)
+    print(f"Done. Wrote {len(rows)} rows to: {output_path}")

@@ -1,8 +1,0 @@
-{
-    "adapter": "MyPrompt",
-    "response": "{\n  \"vulnerabilities\": [\n    {\n      \"vulnerability_type\": \"Other\",\n      \"evidence\": [\"N/A\"]\n    }\n  ]\n}",
-    "thinking": [
-        "**Vulnerability Analysis:**\n\n**Put() Function:**\n- **Access Control:** N/A\n- **Arithmetic:** N/A\n- **Bad Randomness:** N/A\n- **Denial of Service:** N/A\n- **Front Running:** N/A\n- **Other:** N/A\n- **Reentrancy:** N/A\n- **Short Addresses:** N/A\n- **Time Manipulation:** N/A\n- **Unchecked Low-Level Calls:** N/A\n\n**Collect() Function:**\n- **Access Control:** N/A\n- **Arithmetic:** N/A\n- **Bad Randomness:** N/A\n- **Denial of Service:** N/A\n- **Front Running:** N/A\n- **Other:** N/A\n- **Reentrancy:** N/A\n- **Short Addresses:** N/A\n- **Time Manipulation:** N/A\n- **Unchecked Low-Level Calls:** N/A\n\n**Constructor:**\n- **Access Control:** N/A\n- **Arithmetic:** N/A\n- **Bad Randomness:** N/A\n- **Denial of Service:** N/A\n- **Front Running:** N/A\n- **Other:** N/A\n- **Reentrancy:** N/A\n- **Short Addresses:** N/A\n- **Time Manipulation:** N/A\n- **Unchecked Low-Level Calls:** N/A\n\n**Overall:** Normal\n",
-        "\n\n```json\n{\n  \"vulnerabilities\": [\n    {\n      \"vulnerability_type\": \"Other\",\n      \"evidence\": [\"N/A\"]\n    }\n  ]\n}\n```<eos>"
-    ]
-}
