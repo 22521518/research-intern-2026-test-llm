@@ -10,7 +10,7 @@ quantization_config = BitsAndBytesConfig(
     bnb_4bit_quant_type="nf4"
 )
 
-model_repo_id = "google/codegemma-7b-it"
+model_repo_id = "google/codegemma-1.1-7b-it"
 
 # Global variables for model and tokenizer (lazy load)
 _model = None
