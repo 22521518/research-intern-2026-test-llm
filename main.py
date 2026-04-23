@@ -17,6 +17,7 @@ from prompt import PROMPT
 from libs.libfile import get_content, read_json, write_json, write_to_file
 from libs.google_ai_request_queue import GoogleAIRequestQueue
 from preprocess.smc_preprocess import OUTPUT_ANNOTATION_FILE as SMC_ANNOTATION_FILE
+from preprocess.smc_js_preprocess import OUTPUT_ANNOTATION_FILE as SMC_ANNOTATION_FILE_JS
 
 try:
     from dotenv import load_dotenv
@@ -73,6 +74,13 @@ def get_smartbugs_curated_vulnerabilities(runtime_root: Path | None = None) -> l
             return read_json(str(runtime_annotation))
     return read_json(str(SMC_ANNOTATION_FILE))
 
+def get_smartbugs_js_vulnerabilities(runtime_root: Path | None = None) -> list[dict]:
+    if runtime_root is not None:
+        runtime_annotation = runtime_root / "data" / SMC_ANNOTATION_FILE_JS.name
+        if runtime_annotation.exists():
+            return read_json(str(runtime_annotation))
+    return read_json(str(SMC_ANNOTATION_FILE_JS))
+
 
 def resolve_runtime_path(path_value: str, runtime_root: Path) -> Path:
     normalized = str(path_value).strip().replace("\\", "/")
@@ -91,6 +99,37 @@ def resolve_runtime_path(path_value: str, runtime_root: Path) -> Path:
             return candidate
     return candidates[0]
 
+def smartbugs_js_prompt(runtime_root: Path | None = None) -> dict:
+    effective_root = runtime_root or project_root
+    dataset_name = "smartbugs-js"
+    outlogs = effective_root / "log" / dataset_name / get_timestamp()
+    vulnerabilities = get_smartbugs_js_vulnerabilities(effective_root)
+    vulnerability_categories = get_vulnerability_categories_from_annotations(vulnerabilities)
+    if not vulnerability_categories:
+        raise ValueError("No vulnerability categories found in annotation file")
+
+    prompts = []
+    for vulnerability in vulnerabilities:
+        resolved_processed_path = resolve_runtime_path(
+            vulnerability["processed_file_path"], effective_root
+        )
+        if not resolved_processed_path.exists():
+            raise FileNotFoundError(
+                f"Missing processed file: {vulnerability['processed_file_path']} "
+                f"-> {resolved_processed_path}"
+            )
+        prompt_text = PROMPT.format(
+            CONTRACT_CODE=get_content(str(resolved_processed_path)),
+            VULNERABILITY_LIST=parse_set_to_string(vulnerability_categories),
+        )
+        prompts.append({
+            "dataset_name": dataset_name,
+            "vulnerabilities": vulnerability.get("vulnerabilities", []),
+            "content": prompt_text,
+            "org_file_path": vulnerability.get("org_file_path"),
+            "processed_file_path": str(resolved_processed_path),
+        })
+    return {"prompts": prompts, "outlogs": outlogs}
 
 def smartbugs_prompt(runtime_root: Path | None = None) -> dict:
     effective_root = runtime_root or project_root
@@ -412,7 +451,8 @@ if __name__ == "__main__":
     # will happen per-worker when `adapter_factory()` is called.
     # We wrap it in a lambda to pass model_dir to the adapter constructor.
     adapters.append(lambda: HFCodeGemmaAdapter(model_dir=model_dir))
-    summary_path = main(adapters=adapters, test=args.test)
+    # summary_path = main(adapters=adapters, test=args.test)
+    summary_path = main(get_data_prompt=smartbugs_js_prompt, adapters=adapters, test=args.test)
     output_path = summary_path.parent / f"{summary_path.stem}_flattened.csv"
     rows = parse_summary(summary_path)
     write_csv(rows, output_path)
