@@ -182,28 +182,28 @@ def get_timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def parse_json_answer(json_str: str) -> dict:
-    if not json_str:
-        return {"error": "empty_response"}
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError:
-        pass
-    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", json_str)
-    if fenced:
-        try:
-            return json.loads(fenced.group(1))
-        except json.JSONDecodeError:
-            pass
-    start = json_str.find("{")
-    end = json_str.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = json_str[start: end + 1]
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError as e:
-            return {"error": "invalid_json_after_extraction", "details": str(e), "candidate": candidate}
-    return {"error": "no_json_object_found"}
+# def parse_json_answer(json_str: str) -> dict:
+#     if not json_str:
+#         return {"error": "empty_response"}
+#     try:
+#         return json.loads(json_str)
+#     except json.JSONDecodeError:
+#         pass
+#     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", json_str)
+#     if fenced:
+#         try:
+#             return json.loads(fenced.group(1))
+#         except json.JSONDecodeError:
+#             pass
+#     start = json_str.find("{")
+#     end = json_str.rfind("}")
+#     if start != -1 and end != -1 and end > start:
+#         candidate = json_str[start: end + 1]
+#         try:
+#             return json.loads(candidate)
+#         except json.JSONDecodeError as e:
+#             return {"error": "invalid_json_after_extraction", "details": str(e), "candidate": candidate}
+#     return {"error": "no_json_object_found"}
 
 
 def get_env_int(name: str, default: int, minimum: int = 1) -> int:
@@ -370,7 +370,7 @@ def main(get_data_prompt = smartbugs_prompt, root_dir: str | Path | None = None,
                     if thinking_text:
                         pred_output["reasoning"].append(thinking_text)
 
-                    processed_answer = parse_json_answer(response_text)
+                    processed_answer = response_text # parse_json_answer(response_text)
                     predicted = processed_answer.get("vulnerabilities", [])
                     if isinstance(predicted, list):
                         pred_output["predicted_vulnerabilities"].extend(predicted)
